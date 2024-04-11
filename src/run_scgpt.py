@@ -9,14 +9,11 @@ import pandas as pd
 from tqdm import tqdm
 from scipy.stats import pearsonr
 from pathlib import Path
-from torch import nn
-from torch.nn import functional as F
 from torchtext.vocab import Vocab
 from torchtext._torchtext import Vocab as VocabPybind
 from torch_geometric.loader import DataLoader
 from gears.utils import create_cell_graph_dataset_for_prediction
 
-import scgpt as scg
 from scgpt.model import TransformerGenerator
 from scgpt.loss import masked_mse_loss
 from scgpt.tokenizer.gene_tokenizer import GeneVocab
