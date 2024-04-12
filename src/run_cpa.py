@@ -6,6 +6,7 @@ from data import get_pert_data
 import argparse
 import cpa
 from pathlib import Path
+import os
 
 # CPA installation
 # !pip install cpa-tools
@@ -14,13 +15,15 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--dataset', default='Norman2019')
 parser.add_argument('--seed', default=0, type=int)
 parser.add_argument('--outdir', default='results')
-parser.add_argument('--device', default=0, type=int)
+parser.add_argument('--device', default=1, type=int)
 parser.add_argument('--hiddendim', default=64, type=int)
 parser.add_argument('--batchsize', default=32, type=int)
 parser.add_argument('--epochs', default=50, type=int)
 parser.add_argument('--lr', default=1e-3, type=int)
 
+
 args = parser.parse_args()
+os.environ['CUDA_VISIBLE_DEVICES'] = str(args.device)
 
 model_params = {'n_latent': args.hiddendim,
                 'recon_loss': 'gauss',
@@ -86,17 +89,19 @@ if __name__ == '__main__':
                         **model_params,
                         )
     Path(f'{args.outdir}/checkpoints').mkdir(parents=True, exist_ok=True)
-    save_path = f'{args.outdir}/checkpoints/cpa_seed{args.seed}_{args.dataset}'
-    cpa_model.train(max_epochs=args.epochs,
-                    use_gpu=True,
-                    batch_size=args.batchsize,
-                    plan_kwargs=trainer_params,
-                    early_stopping_patience=10,
-                    check_val_every_n_epoch=5,
-                    save_path=save_path)
+    model_path = f'{args.outdir}/checkpoints/cpa_seed{args.seed}_{args.dataset}'
+    if not os.path.exists(model_path):
+        cpa_model.train(max_epochs=args.epochs,
+                        use_gpu=True,
+                        batch_size=args.batchsize,
+                        plan_kwargs=trainer_params,
+                        early_stopping_patience=10,
+                        check_val_every_n_epoch=5,
+                        save_path=model_path)
 
     # Load best CPA model
-    cpa_model = cpa.CPA.load(dir_path=save_path,
+    print(f'Loading model from {model_path}')
+    cpa_model = cpa.CPA.load(dir_path=model_path,
                              adata=cpa_adata,
                              use_gpu=True)
 
@@ -116,25 +121,17 @@ if __name__ == '__main__':
     delta_pert = pert_mean - control_mean
 
     # Store results
-    results_df = pd.DataFrame(columns=['method', 'pert', 'corr_all', 'corr_20de', 'one gene', 'train'])
-    unique_conds = set(test_adata.obs['condition'].unique()) - set(['ctrl'])
+    unique_conds = list(set(test_adata.obs['condition'].unique()) - set(['ctrl']))
+    post_gt_df = pd.DataFrame(columns=pert_data.adata.var['gene_name'].values)
+    post_pred_df = pd.DataFrame(columns=pert_data.adata.var['gene_name'].values)
+    train_counts = []
     for condition in tqdm(unique_conds):
         gene_list = condition.split('+')
-        one_gene = False
-        if 'ctrl' in gene_list:
-            gene_list.remove('ctrl')
-            one_gene = True
-        one_gene_str = '1-gene' if one_gene else '2-gene'
 
         # Select adata condition
         adata_condition = test_adata[test_adata.obs['condition'] == condition]
         X_post = np.array(adata_condition.X.mean(axis=0))[
             0]  # adata_condition.X.mean(axis=0) is a np.matrix of shape (1, n_genes)
-        delta_true = X_post - control_mean
-
-        # Select top 20 DE genes
-        top20_de_genes = pert_data.adata.uns['top_non_dropout_de_20'][adata_condition.obs['condition_name'].values[0]]
-        top20_de_idxs = np.argwhere(np.isin(pert_data.adata.var.index, top20_de_genes)).ravel()
 
         # Store number of train perturbations
         n_train = 0
@@ -143,19 +140,20 @@ if __name__ == '__main__':
                 n_train += 1
             elif f'ctrl+{g}' in train_adata.obs['condition'].values:
                 n_train += 1
+        train_counts.append(n_train)
 
         # Get CPA predictions, sampling random control cells
         cpa_adata_condition = cpa_adata[cpa_adata.obs['condition'] == condition].copy()
         idxs_control = np.random.choice(len(cpa_control_adata), len(cpa_adata_condition), replace=False)
         cpa_adata_condition.X = cpa_control_adata[idxs_control].X.toarray()
         cpa_model.predict(cpa_adata_condition, batch_size=args.batchsize)
-        cpa_delta = np.mean(cpa_adata_condition.obsm['CPA_pred'], axis=0) - control_mean
+        cpa_pred = np.mean(cpa_adata_condition.obsm['CPA_pred'], axis=0)
         del cpa_adata_condition
-        results_df.loc[len(results_df)] = ['CPA',
-                                           condition,
-                                           pearsonr(delta_true, cpa_delta)[0],
-                                           pearsonr(delta_true[top20_de_idxs], cpa_delta[top20_de_idxs])[0],
-                                           one_gene_str,
-                                           n_train]
+        post_gt_df.loc[len(post_gt_df)] = X_post
+        post_pred_df.loc[len(post_pred_df)] = cpa_pred
 
-    results_df.to_csv(f'{args.outdir}/{args.dataset}_{args.seed}_cpa_results.csv', index=False)
+    index = pd.MultiIndex.from_tuples(list(zip(unique_conds, train_counts)), names=['condition', 'n_train'])
+    post_gt_df.index = index
+    post_pred_df.index = index
+    post_gt_df.to_csv(f'{args.outdir}/{args.dataset}_{args.seed}_gears_post-gt.csv')
+    post_pred_df.to_csv(f'{args.outdir}/{args.dataset}_{args.seed}_gears_post-pred.csv')
