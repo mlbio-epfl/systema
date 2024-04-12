@@ -91,17 +91,29 @@ data_params = {
 
 
 def scgpt_forward(
-    batch_data, model, criterion, gene_ids, data_params, trainer_params, n_genes, device
+    batch_data,
+    model,
+    criterion,
+    gene_ids,
+    data_params,
+    trainer_params,
+    n_genes,
+    device,
+    return_loss=True,
 ):
     batch_size = len(batch_data.y)
     batch_data.to(device)
     x: torch.Tensor = batch_data.x  # (batch_size * n_genes, 1)
     ori_gene_values = x[:, 0].view(batch_size, n_genes)
     # pert_flags = x[:, 1].long().view(batch_size, n_genes)
+    # Reconstruct the perturbation flags
     pert_flags = torch.zeros_like(ori_gene_values, dtype=torch.long, device=device)
-    if batch_data.pert_idx is not None:
-        for i, p in enumerate(batch_data.pert_idx):
-            pert_flags[i, int(np.abs(p))] = 1
+    if batch_data.pert is not None:
+        for i, p in enumerate(batch_data.pert):
+            gene_list = p.split("+") - set(["ctrl"])
+            for g in gene_list:
+                pert_flags[i, data_params["genes"][g]] = 1
+
     target_gene_values = batch_data.y  # (batch_size, n_genes)
 
     if data_params["include_zero_gene"] in ["all", "batch-wise"]:
@@ -141,11 +153,13 @@ def scgpt_forward(
         )
         output_values = output_dict["mlm_output"]
 
+    if return_loss:
         masked_positions = torch.ones_like(
             input_values, dtype=torch.bool, device=input_values.device
         )
         loss = criterion(output_values, target_values, masked_positions)
-    return loss
+        return loss
+    return output_values
 
 
 if __name__ == "__main__":
@@ -202,6 +216,7 @@ if __name__ == "__main__":
     gene_ids = np.array(
         [vocab[gene] if gene in vocab else vocab["<pad>"] for gene in genes], dtype=int
     )
+    data_params["genes"] = {value: index for index, value in enumerate(genes)}
     n_genes = len(genes)
 
     # Set up scGPT model
@@ -457,11 +472,16 @@ if __name__ == "__main__":
                 )
                 preds = []
                 for batch_data in loader:
-                    pred_gene_values = model.pred_perturb(
+                    pred_gene_values = scgpt_forward(
                         batch_data,
-                        data_params["include_zero_gene"],
-                        gene_ids=gene_ids,
-                        amp=trainer_params["amp"],
+                        model,
+                        criterion,
+                        gene_ids,
+                        data_params,
+                        trainer_params,
+                        n_genes,
+                        device,
+                        return_loss=False,
                     )
                     preds.append(pred_gene_values)
                 preds = torch.cat(preds, dim=0)
