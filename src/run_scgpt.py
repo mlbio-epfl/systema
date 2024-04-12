@@ -101,7 +101,7 @@ def scgpt_forward(
     pert_flags = torch.zeros_like(ori_gene_values, dtype=torch.long, device=device)
     if batch_data.pert_idx is not None:
         for i, p in enumerate(batch_data.pert_idx):
-            pert_flags[i, p] = 1
+            pert_flags[i, int(np.abs(p))] = 1
     target_gene_values = batch_data.y  # (batch_size, n_genes)
 
     if data_params["include_zero_gene"] in ["all", "batch-wise"]:
