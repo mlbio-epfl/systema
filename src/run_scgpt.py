@@ -95,9 +95,13 @@ def scgpt_forward(
 ):
     batch_size = len(batch_data.y)
     batch_data.to(device)
-    x: torch.Tensor = batch_data.x  # (batch_size * n_genes, 2)
+    x: torch.Tensor = batch_data.x  # (batch_size * n_genes, 1)
     ori_gene_values = x[:, 0].view(batch_size, n_genes)
-    pert_flags = x[:, 1].long().view(batch_size, n_genes)
+    # pert_flags = x[:, 1].long().view(batch_size, n_genes)
+    pert_flags = torch.zeros_like(ori_gene_values, dtype=torch.long, device=device)
+    if batch_data.pert_idx is not None:
+        for i, p in enumerate(batch_data.pert_idx):
+            pert_flags[i, p] = 1
     target_gene_values = batch_data.y  # (batch_size, n_genes)
 
     if data_params["include_zero_gene"] in ["all", "batch-wise"]:
