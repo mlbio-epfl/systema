@@ -32,10 +32,10 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--dataset", default="Norman2019")
 parser.add_argument("--seed", default=0, type=int)
 parser.add_argument("--outdir", default="results")
-parser.add_argument("--device", default=0, type=int)
+parser.add_argument("--device", default=1, type=int)
 # TODO: type of split
 # model specific
-parser.add_argument("--modeldir", default="../save/scGPT_human")
+parser.add_argument("--modeldir") #default="../save/scGPT_human")
 # model hyperparameters
 # default values are from the original scGPT implementation
 parser.add_argument("--batchsize", default=64, type=int)
@@ -108,9 +108,10 @@ def scgpt_forward(
     # pert_flags = x[:, 1].long().view(batch_size, n_genes)
     # Reconstruct the perturbation flags
     pert_flags = torch.zeros_like(ori_gene_values, dtype=torch.long, device=device)
+    # print('Dev:', device)
     if batch_data.pert is not None:
         for i, p in enumerate(batch_data.pert):
-            gene_list = p.split("+") - set(["ctrl"])
+            gene_list = list(set(p.split("+")) - set(["ctrl"]))
             for g in gene_list:
                 pert_flags[i, data_params["genes"][g]] = 1
 
@@ -165,7 +166,8 @@ def scgpt_forward(
 if __name__ == "__main__":
 
     set_seed(args.seed)
-    device = torch.device(f"cuda:{args.device}" if torch.cuda.is_available() else "cpu")
+    # device = torch.device(f"cuda:{args.device}" if torch.cuda.is_available() else "cpu")
+    device = f'cuda:{args.device}'
 
     # Load data
     pert_data = get_pert_data(dataset=args.dataset, seed=args.seed)
