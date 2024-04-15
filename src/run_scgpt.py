@@ -35,7 +35,7 @@ parser.add_argument("--outdir", default="results")
 parser.add_argument("--device", default=1, type=int)
 # TODO: type of split
 # model specific
-parser.add_argument("--modeldir") #default="../save/scGPT_human")
+parser.add_argument("--modeldir")  # default="../save/scGPT_human")
 # model hyperparameters
 # default values are from the original scGPT implementation
 parser.add_argument("--batchsize", default=64, type=int)
@@ -83,9 +83,8 @@ data_params = {
     "special_tokens": ["<pad>", "<cls>", "<eoc>"],
     "pad_value": 0,
     "pert_pad_id": 2,
-    "n_hvg": 0,  # number of highly variable genes
     "include_zero_gene": "all",  # include zero expr genes in training input, "all", "batch-wise", "row-wise", or False
-    "max_seq_len": 1536,
+    # "max_seq_len": 1536,
     "control_pool_size": None,  # number of cells in the control and predict their perturbation results. If `None`, use all control cells.
 }
 
@@ -125,11 +124,11 @@ def scgpt_forward(
                 ori_gene_values.nonzero()[:, 1].flatten().unique().sort()[0]
             )
 
-        # sample input_gene_id
-        if len(input_gene_ids) > data_params["max_seq_len"]:
-            input_gene_ids = torch.randperm(len(input_gene_ids), device=device)[
-                : data_params["max_seq_len"]
-            ]
+        # # sample input_gene_id
+        # if len(input_gene_ids) > data_params["max_seq_len"]:
+        #     input_gene_ids = torch.randperm(len(input_gene_ids), device=device)[
+        #         : data_params["max_seq_len"]
+        #     ]
         input_values = ori_gene_values[:, input_gene_ids]
         input_pert_flags = pert_flags[:, input_gene_ids]
         target_values = target_gene_values[:, input_gene_ids]
@@ -167,7 +166,7 @@ if __name__ == "__main__":
 
     set_seed(args.seed)
     # device = torch.device(f"cuda:{args.device}" if torch.cuda.is_available() else "cpu")
-    device = f'cuda:{args.device}'
+    device = f"cuda:{args.device}"
 
     # Load data
     pert_data = get_pert_data(dataset=args.dataset, seed=args.seed)
@@ -450,11 +449,10 @@ if __name__ == "__main__":
         if data_params["control_pool_size"] is None:
             data_params["control_pool_size"] = len(ctrl_adata.obs)
         for pert in gene_list:
-            for i in pert:
-                if i not in pert_data.gene_names.values.tolist():
-                    raise ValueError(
-                        "The gene is not in the perturbation graph. Please select from GEARS.gene_list!"
-                    )
+            if pert not in pert_data.pert_names.tolist():
+                raise ValueError(
+                    "The gene is not in the perturbation graph. Please select from GEARS.gene_list!"
+                )
 
         model.eval()
         with torch.no_grad():
