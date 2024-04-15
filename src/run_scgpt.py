@@ -165,7 +165,8 @@ def scgpt_forward(
 if __name__ == "__main__":
 
     set_seed(args.seed)
-    device = torch.device(f"cuda:{args.device}" if torch.cuda.is_available() else "cpu")
+    # device = torch.device(f"cuda:{args.device}" if torch.cuda.is_available() else "cpu")
+    device = f'cuda:{args.device}'
 
     # Load data
     pert_data = get_pert_data(dataset=args.dataset, seed=args.seed)
