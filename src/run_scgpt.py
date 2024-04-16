@@ -38,7 +38,7 @@ parser.add_argument("--device", default=1, type=int)
 parser.add_argument("--modeldir") #default="../save/scGPT_human")
 # model hyperparameters
 # default values are from the original scGPT implementation
-parser.add_argument("--batchsize", default=64, type=int)
+parser.add_argument("--batchsize", default=32, type=int)
 parser.add_argument("--epochs", default=15, type=int)
 parser.add_argument("--lr", default=1e-4, type=int)
 
@@ -85,7 +85,7 @@ data_params = {
     "pert_pad_id": 2,
     "n_hvg": 0,  # number of highly variable genes
     "include_zero_gene": "all",  # include zero expr genes in training input, "all", "batch-wise", "row-wise", or False
-    "max_seq_len": 1536,
+    "max_seq_len": 3000, # 5100, # 1536,
     "control_pool_size": None,  # number of cells in the control and predict their perturbation results. If `None`, use all control cells.
 }
 
@@ -410,32 +410,20 @@ if __name__ == "__main__":
     delta_pert = pert_mean - control_mean
 
     # Store results
-    results_df = pd.DataFrame(
-        columns=["method", "pert", "corr_all", "corr_20de", "one gene", "train"]
-    )
-    unique_conds = set(test_adata.obs["condition"].unique()) - set(["ctrl"])
+    unique_conds = list(set(test_adata.obs['condition'].unique()) - set(['ctrl']))
+    post_gt_df = pd.DataFrame(columns=pert_data.adata.var['gene_name'].values)
+    post_pred_df = pd.DataFrame(columns=pert_data.adata.var['gene_name'].values)
+    train_counts = []
     for condition in tqdm(unique_conds):
         gene_list = condition.split("+")
-        one_gene = False
         if "ctrl" in gene_list:
             gene_list.remove("ctrl")
-            one_gene = True
-        one_gene_str = "1-gene" if one_gene else "2-gene"
 
         # Select adata condition
         adata_condition = test_adata[test_adata.obs["condition"] == condition]
         X_post = np.array(adata_condition.X.mean(axis=0))[
             0
         ]  # adata_condition.X.mean(axis=0) is a np.matrix of shape (1, n_genes)
-        delta_true = X_post - control_mean
-
-        # Select top 20 DE genes
-        top20_de_genes = pert_data.adata.uns["top_non_dropout_de_20"][
-            adata_condition.obs["condition_name"].values[0]
-        ]
-        top20_de_idxs = np.argwhere(
-            np.isin(pert_data.adata.var.index, top20_de_genes)
-        ).ravel()
 
         # Store number of train perturbations
         n_train = 0
@@ -444,17 +432,20 @@ if __name__ == "__main__":
                 n_train += 1
             elif f"ctrl+{g}" in train_adata.obs["condition"].values:
                 n_train += 1
+        train_counts.append(n_train)
 
         # Predict and collect the results for scGPT
         ctrl_adata = pert_data.adata[pert_data.adata.obs["condition"] == "ctrl"]
         if data_params["control_pool_size"] is None:
             data_params["control_pool_size"] = len(ctrl_adata.obs)
+
         for pert in gene_list:
-            for i in pert:
-                if i not in pert_data.gene_names.values.tolist():
-                    raise ValueError(
-                        "The gene is not in the perturbation graph. Please select from GEARS.gene_list!"
-                    )
+            if pert not in pert_data.gene_names.tolist():
+                print(i)
+                print(pert)
+                raise ValueError(
+                    "The gene is not in the perturbation graph. Please select from GEARS.gene_list!"
+                )
 
         model.eval()
         with torch.no_grad():
@@ -486,20 +477,15 @@ if __name__ == "__main__":
                         return_loss=False,
                     )
                     preds.append(pred_gene_values)
-                preds = torch.cat(preds, dim=0)
-                scgpt_delta = (
-                    np.mean(preds.detach().cpu().numpy(), axis=0) - control_mean
-                )
+                preds = np.mean(preds.detach().cpu().numpy(), axis=0)
 
-        results_df.loc[len(results_df)] = [
-            "scGPT",
-            condition,
-            pearsonr(delta_true, scgpt_delta)[0],
-            pearsonr(delta_true[top20_de_idxs], scgpt_delta[top20_de_idxs])[0],
-            one_gene_str,
-            n_train,
-        ]
+                # Non-ctl mean
+                post_gt_df.loc[len(post_gt_df)] = X_post
+                post_pred_df.loc[len(post_pred_df)] = pert_mean
 
-    results_df.to_csv(
-        f"{args.outdir}/{args.dataset}_{args.seed}_scgpt_results.csv", index=False
-    )
+        index = pd.MultiIndex.from_tuples(list(zip(unique_conds, train_counts)), names=['condition', 'n_train'])
+        post_gt_df.index = index
+        post_pred_df.index = index
+        post_gt_df.to_csv(f'{args.outdir}/{args.dataset}_{args.seed}_scgpt_post-gt.csv')
+        post_pred_df.to_csv(f'{args.outdir}/{args.dataset}_{args.seed}_scgpt_post-pred.csv')
+
