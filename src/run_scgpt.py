@@ -97,9 +97,9 @@ def scgpt_forward(
     trainer_params,
     n_genes,
     device,
-    return_loss=True,
+    test=False,
 ):
-    batch_size = len(batch_data.y)
+    batch_size = int(batch_data.x.shape[0] / n_genes)
     batch_data.to(device)
     x: torch.Tensor = batch_data.x  # (batch_size * n_genes, 1)
     ori_gene_values = x[:, 0].view(batch_size, n_genes)
@@ -112,8 +112,6 @@ def scgpt_forward(
             gene_list = list(set(p.split("+")) - set(["ctrl"]))
             for g in gene_list:
                 pert_flags[i, data_params["genes"][g]] = 1
-
-    target_gene_values = batch_data.y  # (batch_size, n_genes)
 
     if data_params["include_zero_gene"] in ["all", "batch-wise"]:
         if data_params["include_zero_gene"] == "all":
@@ -130,7 +128,9 @@ def scgpt_forward(
         #     ]
         input_values = ori_gene_values[:, input_gene_ids]
         input_pert_flags = pert_flags[:, input_gene_ids]
-        target_values = target_gene_values[:, input_gene_ids]
+        if not test:
+            target_gene_values = batch_data.y  # (batch_size, n_genes)
+            target_values = target_gene_values[:, input_gene_ids]
 
         mapped_input_gene_ids = map_raw_id_to_vocab_id(input_gene_ids, gene_ids)
         mapped_input_gene_ids = mapped_input_gene_ids.repeat(batch_size, 1)
@@ -152,7 +152,7 @@ def scgpt_forward(
         )
         output_values = output_dict["mlm_output"]
 
-    if return_loss:
+    if not test:
         masked_positions = torch.ones_like(
             input_values, dtype=torch.bool, device=input_values.device
         )
@@ -408,9 +408,9 @@ if __name__ == "__main__":
     delta_pert = pert_mean - control_mean
 
     # Store results
-    unique_conds = list(set(test_adata.obs['condition'].unique()) - set(['ctrl']))
-    post_gt_df = pd.DataFrame(columns=pert_data.adata.var['gene_name'].values)
-    post_pred_df = pd.DataFrame(columns=pert_data.adata.var['gene_name'].values)
+    unique_conds = list(set(test_adata.obs["condition"].unique()) - set(["ctrl"]))
+    post_gt_df = pd.DataFrame(columns=pert_data.adata.var["gene_name"].values)
+    post_pred_df = pd.DataFrame(columns=pert_data.adata.var["gene_name"].values)
     train_counts = []
     for condition in tqdm(unique_conds):
         gene_list = condition.split("+")
@@ -439,7 +439,6 @@ if __name__ == "__main__":
 
         for pert in gene_list:
             if pert not in pert_data.gene_names.tolist():
-                print(i)
                 print(pert)
                 raise ValueError(
                     "The gene is not in the perturbation graph. Please select from GEARS.gene_list!"
@@ -472,7 +471,7 @@ if __name__ == "__main__":
                         trainer_params,
                         n_genes,
                         device,
-                        return_loss=False,
+                        test=True,
                     )
                     preds.append(pred_gene_values)
                 preds = np.mean(preds.detach().cpu().numpy(), axis=0)
@@ -481,9 +480,12 @@ if __name__ == "__main__":
                 post_gt_df.loc[len(post_gt_df)] = X_post
                 post_pred_df.loc[len(post_pred_df)] = pert_mean
 
-        index = pd.MultiIndex.from_tuples(list(zip(unique_conds, train_counts)), names=['condition', 'n_train'])
+        index = pd.MultiIndex.from_tuples(
+            list(zip(unique_conds, train_counts)), names=["condition", "n_train"]
+        )
         post_gt_df.index = index
         post_pred_df.index = index
-        post_gt_df.to_csv(f'{args.outdir}/{args.dataset}_{args.seed}_scgpt_post-gt.csv')
-        post_pred_df.to_csv(f'{args.outdir}/{args.dataset}_{args.seed}_scgpt_post-pred.csv')
-
+        post_gt_df.to_csv(f"{args.outdir}/{args.dataset}_{args.seed}_scgpt_post-gt.csv")
+        post_pred_df.to_csv(
+            f"{args.outdir}/{args.dataset}_{args.seed}_scgpt_post-pred.csv"
+        )
