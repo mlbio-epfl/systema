@@ -410,9 +410,9 @@ if __name__ == "__main__":
     delta_pert = pert_mean - control_mean
 
     # Store results
-    unique_conds = list(set(test_adata.obs['condition'].unique()) - set(['ctrl']))
-    post_gt_df = pd.DataFrame(columns=pert_data.adata.var['gene_name'].values)
-    post_pred_df = pd.DataFrame(columns=pert_data.adata.var['gene_name'].values)
+    unique_conds = list(set(test_adata.obs["condition"].unique()) - set(["ctrl"]))
+    post_gt_df = pd.DataFrame(columns=pert_data.adata.var["gene_name"].values)
+    post_pred_df = pd.DataFrame(columns=pert_data.adata.var["gene_name"].values)
     train_counts = []
     model.eval()
     with torch.no_grad():
@@ -487,8 +487,12 @@ if __name__ == "__main__":
             post_gt_df.loc[len(post_gt_df)] = X_post
             post_pred_df.loc[len(post_pred_df)] = preds
 
-        index = pd.MultiIndex.from_tuples(list(zip(unique_conds, train_counts)), names=['condition', 'n_train'])
+        index = pd.MultiIndex.from_tuples(
+            list(zip(unique_conds, train_counts)), names=["condition", "n_train"]
+        )
         post_gt_df.index = index
         post_pred_df.index = index
-        post_gt_df.to_csv(f'{args.outdir}/{args.dataset}_{args.seed}_scgpt_post-gt.csv')
-        post_pred_df.to_csv(f'{args.outdir}/{args.dataset}_{args.seed}_scgpt_post-pred.csv')
+        post_gt_df.to_csv(f"{args.outdir}/{args.dataset}_{args.seed}_scgpt_post-gt.csv")
+        post_pred_df.to_csv(
+            f"{args.outdir}/{args.dataset}_{args.seed}_scgpt_post-pred.csv"
+        )
