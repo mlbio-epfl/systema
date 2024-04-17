@@ -7,7 +7,6 @@ import torch
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
-from scipy.stats import pearsonr
 from pathlib import Path
 from torchtext.vocab import Vocab
 from torchtext._torchtext import Vocab as VocabPybind
@@ -38,7 +37,7 @@ parser.add_argument("--device", default=1, type=int)
 parser.add_argument("--modeldir")  # default="../save/scGPT_human")
 # model hyperparameters
 # default values are from the original scGPT implementation
-parser.add_argument("--batchsize", default=32, type=int)
+parser.add_argument("--batchsize", default=8, type=int)
 parser.add_argument("--epochs", default=15, type=int)
 parser.add_argument("--lr", default=1e-4, type=int)
 
@@ -83,8 +82,11 @@ data_params = {
     "special_tokens": ["<pad>", "<cls>", "<eoc>"],
     "pad_value": 0,
     "pert_pad_id": 2,
+    "n_hvg": 0,  # number of highly variable genes
     "include_zero_gene": "all",  # include zero expr genes in training input, "all", "batch-wise", "row-wise", or False
-    "control_pool_size": None,  # number of cells in the control and predict their perturbation results. If `None`, use all control cells.
+    "max_seq_len": 5100, #100,  # 1536,
+    "control_pool_size": 100,  # None,
+    # number of cells in the control and predict their perturbation results. If `None`, use all control cells.
 }
 
 
@@ -97,9 +99,9 @@ def scgpt_forward(
     trainer_params,
     n_genes,
     device,
-    return_loss=True,
+    test=False,
 ):
-    batch_size = len(batch_data.y)
+    batch_size = int(batch_data.x.shape[0] / n_genes)
     batch_data.to(device)
     x: torch.Tensor = batch_data.x  # (batch_size * n_genes, 1)
     ori_gene_values = x[:, 0].view(batch_size, n_genes)
@@ -113,8 +115,6 @@ def scgpt_forward(
             for g in gene_list:
                 pert_flags[i, data_params["genes"][g]] = 1
 
-    target_gene_values = batch_data.y  # (batch_size, n_genes)
-
     if data_params["include_zero_gene"] in ["all", "batch-wise"]:
         if data_params["include_zero_gene"] == "all":
             input_gene_ids = torch.arange(n_genes, device=device, dtype=torch.long)
@@ -123,14 +123,16 @@ def scgpt_forward(
                 ori_gene_values.nonzero()[:, 1].flatten().unique().sort()[0]
             )
 
-        # # sample input_gene_id
-        # if len(input_gene_ids) > data_params["max_seq_len"]:
-        #     input_gene_ids = torch.randperm(len(input_gene_ids), device=device)[
-        #         : data_params["max_seq_len"]
-        #     ]
+        # sample input_gene_id
+        if len(input_gene_ids) > data_params["max_seq_len"]:
+            input_gene_ids = torch.randperm(len(input_gene_ids), device=device)[
+                : data_params["max_seq_len"]
+            ]
         input_values = ori_gene_values[:, input_gene_ids]
         input_pert_flags = pert_flags[:, input_gene_ids]
-        target_values = target_gene_values[:, input_gene_ids]
+        if not test:
+            target_gene_values = batch_data.y  # (batch_size, n_genes)
+            target_values = target_gene_values[:, input_gene_ids]
 
         mapped_input_gene_ids = map_raw_id_to_vocab_id(input_gene_ids, gene_ids)
         mapped_input_gene_ids = mapped_input_gene_ids.repeat(batch_size, 1)
@@ -152,7 +154,7 @@ def scgpt_forward(
         )
         output_values = output_dict["mlm_output"]
 
-    if return_loss:
+    if not test:
         masked_positions = torch.ones_like(
             input_values, dtype=torch.bool, device=input_values.device
         )
@@ -165,7 +167,7 @@ if __name__ == "__main__":
 
     set_seed(args.seed)
     # device = torch.device(f"cuda:{args.device}" if torch.cuda.is_available() else "cpu")
-    device = f"cuda:{args.device}"
+    device = f'cuda:{args.device}'
 
     # Load data
     pert_data = get_pert_data(dataset=args.dataset, seed=args.seed)
@@ -241,8 +243,8 @@ if __name__ == "__main__":
 
     # Load model weights, either partially or try to load all
     if (
-        model_params["load_param_prefixs"] is not None
-        and model_params["load_model"] is not None
+            model_params["load_param_prefixs"] is not None
+            and model_params["load_model"] is not None
     ):
         # Only load params that start with the prefix
         model_dict = model.state_dict()
@@ -335,7 +337,7 @@ if __name__ == "__main__":
             if batch % trainer_params["log_interval"] == 0 and batch > 0:
                 lr = scheduler.get_last_lr()[0]
                 ms_per_batch = (
-                    (time.time() - start_time) * 1000 / trainer_params["log_interval"]
+                        (time.time() - start_time) * 1000 / trainer_params["log_interval"]
                 )
                 cur_loss = total_loss / trainer_params["log_interval"]
                 # ppl = math.exp(cur_loss)
@@ -412,78 +414,81 @@ if __name__ == "__main__":
     post_gt_df = pd.DataFrame(columns=pert_data.adata.var['gene_name'].values)
     post_pred_df = pd.DataFrame(columns=pert_data.adata.var['gene_name'].values)
     train_counts = []
-    for condition in tqdm(unique_conds):
-        gene_list = condition.split("+")
-        if "ctrl" in gene_list:
-            gene_list.remove("ctrl")
+    model.eval()
+    with torch.no_grad():
+        for condition in tqdm(unique_conds):
+            gene_list = condition.split("+")
+            if "ctrl" in gene_list:
+                gene_list.remove("ctrl")
 
-        # Select adata condition
-        adata_condition = test_adata[test_adata.obs["condition"] == condition]
-        X_post = np.array(adata_condition.X.mean(axis=0))[
-            0
-        ]  # adata_condition.X.mean(axis=0) is a np.matrix of shape (1, n_genes)
+            # Select adata condition
+            adata_condition = test_adata[test_adata.obs["condition"] == condition]
+            X_post = np.array(adata_condition.X.mean(axis=0))[
+                0
+            ]  # adata_condition.X.mean(axis=0) is a np.matrix of shape (1, n_genes)
 
-        # Store number of train perturbations
-        n_train = 0
-        for g in gene_list:
-            if f"{g}+ctrl" in train_adata.obs["condition"].values:
-                n_train += 1
-            elif f"ctrl+{g}" in train_adata.obs["condition"].values:
-                n_train += 1
-        train_counts.append(n_train)
+            # Store number of train perturbations
+            n_train = 0
+            for g in gene_list:
+                if f"{g}+ctrl" in train_adata.obs["condition"].values:
+                    n_train += 1
+                elif f"ctrl+{g}" in train_adata.obs["condition"].values:
+                    n_train += 1
+            train_counts.append(n_train)
 
-        # Predict and collect the results for scGPT
-        ctrl_adata = pert_data.adata[pert_data.adata.obs["condition"] == "ctrl"]
-        if data_params["control_pool_size"] is None:
-            data_params["control_pool_size"] = len(ctrl_adata.obs)
+            # Predict and collect the results for scGPT
+            ctrl_adata = pert_data.adata[pert_data.adata.obs["condition"] == "ctrl"]
+            if data_params["control_pool_size"] is None:
+                data_params["control_pool_size"] = len(ctrl_adata.obs)
 
-        for pert in gene_list:
-            if pert not in pert_data.gene_names.tolist():
-                print(i)
-                print(pert)
-                raise ValueError(
-                    "The gene is not in the perturbation graph. Please select from GEARS.gene_list!"
-                )
-
-        model.eval()
-        with torch.no_grad():
-            results_pred = {}
-            for pert in gene_list:
-                cell_graphs = create_cell_graph_dataset_for_prediction(
-                    pert,
-                    ctrl_adata,
-                    pert_data.gene_names.values.tolist(),
-                    device,
-                    num_samples=data_params["control_pool_size"],
-                )
-                loader = DataLoader(
-                    cell_graphs,
-                    batch_size=trainer_params["eval_batch_size"],
-                    shuffle=False,
-                )
-                preds = []
-                for batch_data in loader:
-                    pred_gene_values = scgpt_forward(
-                        batch_data,
-                        model,
-                        criterion,
-                        gene_ids,
-                        data_params,
-                        trainer_params,
-                        n_genes,
-                        device,
-                        return_loss=False,
+            for i in gene_list:
+                if i not in pert_data.gene_names.values.tolist():
+                    print(i)
+                    raise ValueError(
+                        "The gene is not in the perturbation graph. Please select from GEARS.gene_list!"
                     )
-                    preds.append(pred_gene_values)
-                preds = np.mean(preds.detach().cpu().numpy(), axis=0)
 
-                # Non-ctl mean
-                post_gt_df.loc[len(post_gt_df)] = X_post
-                post_pred_df.loc[len(post_pred_df)] = pert_mean
+            pert = gene_list  # condition.split("+").remove('ctrl')
+            cell_graphs = create_cell_graph_dataset_for_prediction(
+                pert,
+                ctrl_adata,
+                pert_data.gene_names.values.tolist(),
+                device,
+                num_samples=data_params["control_pool_size"],
+            )
+            loader = DataLoader(
+                cell_graphs,
+                batch_size=trainer_params["eval_batch_size"],
+                shuffle=False,
+            )
+            preds = []
+            for batch_data in loader:
+                """
+                pred_gene_values = scgpt_forward(
+                    batch_data,
+                    model,
+                    criterion,
+                    gene_ids,
+                    data_params,
+                    trainer_params,
+                    n_genes,
+                    device,
+                    test=True,
+                )
+                """
+                pred_gene_values = model.pred_perturb(
+                    batch_data, data_params["include_zero_gene"], gene_ids=gene_ids, amp=trainer_params["amp"]
+                )
+                preds.append(pred_gene_values)
+            preds = torch.cat(preds, dim=0)
+            preds = np.mean(preds.detach().cpu().numpy(), axis=0)
+
+            # scGPT predictions
+            post_gt_df.loc[len(post_gt_df)] = X_post
+            post_pred_df.loc[len(post_pred_df)] = preds
 
         index = pd.MultiIndex.from_tuples(list(zip(unique_conds, train_counts)), names=['condition', 'n_train'])
         post_gt_df.index = index
         post_pred_df.index = index
         post_gt_df.to_csv(f'{args.outdir}/{args.dataset}_{args.seed}_scgpt_post-gt.csv')
         post_pred_df.to_csv(f'{args.outdir}/{args.dataset}_{args.seed}_scgpt_post-pred.csv')
-
