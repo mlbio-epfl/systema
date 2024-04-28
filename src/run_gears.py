@@ -64,6 +64,8 @@ if __name__ == '__main__':
     train_counts = []
     for condition in tqdm(unique_conds):
         gene_list = condition.split('+')
+        if 'ctrl' in gene_list:
+            gene_list.remove('ctrl')
 
         # Select adata condition
         adata_condition = test_adata[test_adata.obs['condition'] == condition]

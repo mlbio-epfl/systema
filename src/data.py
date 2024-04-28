@@ -6,7 +6,8 @@ import tarfile
 import anndata
 
 
-def norman2019(seed, data_dir='data'):
+"""
+def norman2019(seed, data_dir='data', suffix=''):
     d = f'{data_dir}/norman2019'
     file = f'{d}/norman2019_{seed}.h5ad'
 
@@ -23,21 +24,72 @@ def norman2019(seed, data_dir='data'):
 
         # Create split and save data (when GEARS restores saved splits,
         # these are not stored in pert_adata.adata.obs['split'])
-        pert_data = PertData(d)
-        pert_data.load(data_name='norman')
+        pert_data = PertData(f'{d}{suffix}')
+        pert_data.load(data_name='norman', data_path='adamson2016')
         pert_data.prepare_split(split='simulation', seed=seed)
         pert_data.adata.write_h5ad(file)
     else:
-        pert_data = PertData(d)
-        pert_data.load(data_name='norman')
+        pert_data = PertData(f'{d}{suffix}')
+        pert_data.load(data_name='norman', data_path='adamson2016')
         pert_data.prepare_split(split='simulation', seed=seed)
         pert_data.adata = anndata.read_h5ad(file)  # Manually setting the data to ensure same split
 
     return pert_data
+"""
+def norman2019(seed, data_dir='data', suffix=''):
+    d = f'{data_dir}/norman2019'
+    file = f'{d}/norman2019_{seed}.h5ad'
+    Path(d).mkdir(parents=True, exist_ok=True)
 
+    # Create split and save data (when GEARS restores saved splits,
+    # these are not stored in pert_adata.adata.obs['split'])
+    pert_data = PertData(f'{d}{suffix}')
+    pert_data.load(data_name='norman', data_path='norman2019')
+    pert_data.prepare_split(split='simulation', seed=seed)
+    if not os.path.exists(file):
+        pert_data.adata.write_h5ad(file)
+    else:
+        pert_data.adata = anndata.read_h5ad(file)  # Manually setting the data to ensure same split
+    return pert_data
 
-def get_pert_data(dataset, seed):
+def adamson2016(seed, data_dir='data', suffix=''):
+    d = f'{data_dir}/adamson2016'
+    file = f'{d}/adamson2016_{seed}.h5ad'
+    Path(d).mkdir(parents=True, exist_ok=True)
+
+    # Create split and save data (when GEARS restores saved splits,
+    # these are not stored in pert_adata.adata.obs['split'])
+    pert_data = PertData(f'{d}{suffix}')
+    pert_data.load(data_name='adamson', data_path='adamson2016')
+    pert_data.prepare_split(split='simulation', seed=seed)
+    if not os.path.exists(file):
+        pert_data.adata.write_h5ad(file)
+    else:
+        pert_data.adata = anndata.read_h5ad(file)  # Manually setting the data to ensure same split
+    return pert_data
+
+def dixit2016(seed, data_dir='data', suffix=''):
+    d = f'{data_dir}/dixit2016'
+    file = f'{d}/dixit2016_{seed}.h5ad'
+    Path(d).mkdir(parents=True, exist_ok=True)
+
+    # Create split and save data (when GEARS restores saved splits,
+    # these are not stored in pert_adata.adata.obs['split'])
+    pert_data = PertData(f'{d}{suffix}')
+    pert_data.load(data_name='dixit', data_path='dixit2016')
+    pert_data.prepare_split(split='simulation', seed=seed)
+    if not os.path.exists(file):
+        pert_data.adata.write_h5ad(file)
+    else:
+        pert_data.adata = anndata.read_h5ad(file)  # Manually setting the data to ensure same split
+    return pert_data
+
+def get_pert_data(dataset, seed, **kwargs):
     if dataset == 'Norman2019':
-        return norman2019(seed=seed)
+        return norman2019(seed=seed, **kwargs)
+    elif dataset == "Adamson2016":
+        return adamson2016(seed=seed, **kwargs)
+    elif dataset == "Dixit2016":
+        return adamson2016(seed=seed, **kwargs)
     else:
         raise ValueError(f'Dataset {dataset} not supported')
