@@ -32,9 +32,13 @@ parser.add_argument("--dataset", default="Norman2019")
 parser.add_argument("--seed", default=0, type=int)
 parser.add_argument("--outdir", default="results")
 parser.add_argument("--device", default=1, type=int)
+parser.add_argument("--finetune", action='store_true')
+parser.add_argument("--train", action='store_true')
+parser.set_defaults(finetune=False)
+
 # TODO: type of split
 # model specific
-parser.add_argument("--modeldir")  # default="../save/scGPT_human")
+parser.add_argument("--modeldir", default="results/checkpoints/scGPT_human")
 # model hyperparameters
 # default values are from the original scGPT implementation
 parser.add_argument("--batchsize", default=8, type=int)
@@ -113,7 +117,9 @@ def scgpt_forward(
         for i, p in enumerate(batch_data.pert):
             gene_list = list(set(p.split("+")) - set(["ctrl"]))
             for g in gene_list:
-                pert_flags[i, data_params["genes"][g]] = 1
+                if g in data_params["genes"]:
+                    # Replicating GEARS behaviour: https://github.com/snap-stanford/GEARS/blob/719328bd56745ab5f38c80dfca55cfd466ee356f/gears/model.py#L151
+                    pert_flags[i, data_params["genes"][g]] = 1
 
     if data_params["include_zero_gene"] in ["all", "batch-wise"]:
         if data_params["include_zero_gene"] == "all":
@@ -164,17 +170,23 @@ def scgpt_forward(
 
 
 if __name__ == "__main__":
-
     set_seed(args.seed)
     # device = torch.device(f"cuda:{args.device}" if torch.cuda.is_available() else "cpu")
     device = f'cuda:{args.device}'
+
+    # Set different name for scGPT finetuned
+    model_name = 'scgpt'
+    if args.finetune:
+        model_name += '_ft'
+    else:
+        model_params["load_model"] = None
 
     # Load data
     pert_data = get_pert_data(dataset=args.dataset, seed=args.seed)
     pert_data.get_dataloader(batch_size=args.batchsize, test_batch_size=args.batchsize)
 
     # Load metadata of the model and data
-    if model_params["load_model"] is not None:
+    if args.finetune and model_params["load_model"] is not None:
         model_dir = Path(model_params["load_model"])
         model_config_file = model_dir / "args.json"
         model_file = model_dir / "best_model.pt"
@@ -209,6 +221,10 @@ if __name__ == "__main__":
         model_params["nlayers"] = model_configs["nlayers"]
         model_params["n_layers_cls"] = model_configs["n_layers_cls"]
     else:
+        # Rename duplicate genes (not supported by VocabPybind)
+        pert_data.adata.var['gene_name'] = pert_data.adata.var['gene_name'].astype(str).where(~pert_data.adata.var['gene_name'].duplicated(),
+                                                                          pert_data.adata.var['gene_name'].astype(str) + '_dp')
+
         genes = pert_data.adata.var["gene_name"].tolist()
         vocab = Vocab(
             VocabPybind(genes + data_params["special_tokens"], None)
@@ -280,81 +296,29 @@ if __name__ == "__main__":
     model.to(device)
 
     # Training
-    criterion = masked_mse_loss
-    optimizer = torch.optim.Adam(model.parameters(), lr=trainer_params["lr"])
-    scheduler = torch.optim.lr_scheduler.StepLR(
-        optimizer, trainer_params["schedule_interval"], gamma=0.9
-    )
-    scaler = torch.cuda.amp.GradScaler(enabled=trainer_params["amp"])
-    best_val_loss = float("inf")
-    best_model = None
-    patience = 0
+    if args.train:
+        criterion = masked_mse_loss
+        optimizer = torch.optim.Adam(model.parameters(), lr=trainer_params["lr"])
+        scheduler = torch.optim.lr_scheduler.StepLR(
+            optimizer, trainer_params["schedule_interval"], gamma=0.9
+        )
+        scaler = torch.cuda.amp.GradScaler(enabled=trainer_params["amp"])
+        best_val_loss = float("inf")
+        best_model = None
+        patience = 0
 
-    for epoch in range(1, trainer_params["epochs"] + 1):
-        epoch_start_time = time.time()
-        train_loader = pert_data.dataloader["train_loader"]
-        valid_loader = pert_data.dataloader["val_loader"]
+        for epoch in range(1, trainer_params["epochs"] + 1):
+            epoch_start_time = time.time()
+            train_loader = pert_data.dataloader["train_loader"]
+            valid_loader = pert_data.dataloader["val_loader"]
 
-        # Training epoch
-        model.train()
-        total_loss = 0.0
-        start_time = time.time()  # time of the last log
+            # Training epoch
+            model.train()
+            total_loss = 0.0
+            start_time = time.time()  # time of the last log
 
-        num_batches = len(train_loader)
-        for batch, batch_data in enumerate(train_loader):
-            loss = scgpt_forward(
-                batch_data,
-                model,
-                criterion,
-                gene_ids,
-                data_params,
-                trainer_params,
-                n_genes,
-                device,
-            )
-            model.zero_grad()
-            scaler.scale(loss).backward()
-            scaler.unscale_(optimizer)
-            with warnings.catch_warnings(record=True) as w:
-                warnings.filterwarnings("always")
-                torch.nn.utils.clip_grad_norm_(
-                    model.parameters(),
-                    1.0,
-                    error_if_nonfinite=False if scaler.is_enabled() else True,
-                )
-                if len(w) > 0:
-                    print(
-                        f"Found infinite gradient. This may be caused by the gradient "
-                        f"scaler. The current scale is {scaler.get_scale()}. This warning "
-                        "can be ignored if no longer occurs after autoscaling of the scaler."
-                    )
-            scaler.step(optimizer)
-            scaler.update()
-
-            # torch.cuda.empty_cache()
-
-            total_loss += loss.item()
-            if batch % trainer_params["log_interval"] == 0 and batch > 0:
-                lr = scheduler.get_last_lr()[0]
-                ms_per_batch = (
-                        (time.time() - start_time) * 1000 / trainer_params["log_interval"]
-                )
-                cur_loss = total_loss / trainer_params["log_interval"]
-                # ppl = math.exp(cur_loss)
-                print(
-                    f"| epoch {epoch:3d} | {batch:3d}/{num_batches:3d} batches | "
-                    f"lr {lr:05.4f} | ms/batch {ms_per_batch:5.2f} | "
-                    f"loss {cur_loss:5.2f} |"
-                )
-                total_loss = 0
-                start_time = time.time()
-
-        # Validation
-        model.eval()
-        total_loss = 0.0
-
-        with torch.no_grad():
-            for batch, batch_data in enumerate(valid_loader):
+            num_batches = len(train_loader)
+            for batch, batch_data in enumerate(train_loader):
                 loss = scgpt_forward(
                     batch_data,
                     model,
@@ -365,38 +329,91 @@ if __name__ == "__main__":
                     n_genes,
                     device,
                 )
+                model.zero_grad()
+                scaler.scale(loss).backward()
+                scaler.unscale_(optimizer)
+                with warnings.catch_warnings(record=True) as w:
+                    warnings.filterwarnings("always")
+                    torch.nn.utils.clip_grad_norm_(
+                        model.parameters(),
+                        1.0,
+                        error_if_nonfinite=False if scaler.is_enabled() else True,
+                    )
+                    if len(w) > 0:
+                        print(
+                            f"Found infinite gradient. This may be caused by the gradient "
+                            f"scaler. The current scale is {scaler.get_scale()}. This warning "
+                            "can be ignored if no longer occurs after autoscaling of the scaler."
+                        )
+                scaler.step(optimizer)
+                scaler.update()
+
+                # torch.cuda.empty_cache()
+
                 total_loss += loss.item()
-        val_loss = total_loss / len(valid_loader)
+                if batch % trainer_params["log_interval"] == 0 and batch > 0:
+                    lr = scheduler.get_last_lr()[0]
+                    ms_per_batch = (
+                            (time.time() - start_time) * 1000 / trainer_params["log_interval"]
+                    )
+                    cur_loss = total_loss / trainer_params["log_interval"]
+                    # ppl = math.exp(cur_loss)
+                    print(
+                        f"| epoch {epoch:3d} | {batch:3d}/{num_batches:3d} batches | "
+                        f"lr {lr:05.4f} | ms/batch {ms_per_batch:5.2f} | "
+                        f"loss {cur_loss:5.2f} |"
+                    )
+                    total_loss = 0
+                    start_time = time.time()
 
-        # Print epoch summary
-        elapsed = time.time() - epoch_start_time
-        print("-" * 20)
-        print(
-            f"| end of epoch {epoch:3d} | time: {elapsed:5.2f}s | "
-            f"valid loss/mse {val_loss:5.4f} |"
+            # Validation
+            model.eval()
+            total_loss = 0.0
+
+            with torch.no_grad():
+                for batch, batch_data in enumerate(valid_loader):
+                    loss = scgpt_forward(
+                        batch_data,
+                        model,
+                        criterion,
+                        gene_ids,
+                        data_params,
+                        trainer_params,
+                        n_genes,
+                        device,
+                    )
+                    total_loss += loss.item()
+            val_loss = total_loss / len(valid_loader)
+
+            # Print epoch summary
+            elapsed = time.time() - epoch_start_time
+            print("-" * 20)
+            print(
+                f"| end of epoch {epoch:3d} | time: {elapsed:5.2f}s | "
+                f"valid loss/mse {val_loss:5.4f} |"
+            )
+            print("-" * 20)
+
+            # Early stopping
+            if val_loss < best_val_loss:
+                best_val_loss = val_loss
+                best_model = copy.deepcopy(model)
+                print(f"Best model with score {best_val_loss:5.4f}")
+                patience = 0
+            else:
+                patience += 1
+                if patience >= trainer_params["early_stop"]:
+                    print(f"Early stop at epoch {epoch}")
+                    break
+
+            scheduler.step()
+
+        # Save the best model
+        Path(f"{args.outdir}/checkpoints").mkdir(parents=True, exist_ok=True)
+        torch.save(
+            best_model.state_dict(),
+            f"{args.outdir}/checkpoints/{model_name}_seed{args.seed}_{args.dataset}_epoch{epoch}",
         )
-        print("-" * 20)
-
-        # Early stopping
-        if val_loss < best_val_loss:
-            best_val_loss = val_loss
-            best_model = copy.deepcopy(model)
-            print(f"Best model with score {best_val_loss:5.4f}")
-            patience = 0
-        else:
-            patience += 1
-            if patience >= trainer_params["early_stop"]:
-                print(f"Early stop at epoch {epoch}")
-                break
-
-        scheduler.step()
-
-    # Save the best model
-    Path(f"{args.outdir}/checkpoints").mkdir(parents=True, exist_ok=True)
-    torch.save(
-        best_model.state_dict(),
-        f"{args.outdir}/checkpoints/scgpt_seed{args.seed}_{args.dataset}_epoch{epoch}",
-    )
 
     # Split train and test
     test_adata = pert_data.adata[pert_data.adata.obs["split"] == "test"]
@@ -410,9 +427,9 @@ if __name__ == "__main__":
     delta_pert = pert_mean - control_mean
 
     # Store results
-    unique_conds = list(set(test_adata.obs["condition"].unique()) - set(["ctrl"]))
-    post_gt_df = pd.DataFrame(columns=pert_data.adata.var["gene_name"].values)
-    post_pred_df = pd.DataFrame(columns=pert_data.adata.var["gene_name"].values)
+    unique_conds = list(set(test_adata.obs['condition'].unique()) - set(['ctrl']))
+    post_gt_df = pd.DataFrame(columns=pert_data.adata.var['gene_name'].values)
+    post_pred_df = pd.DataFrame(columns=pert_data.adata.var['gene_name'].values)
     train_counts = []
     model.eval()
     with torch.no_grad():
@@ -441,12 +458,17 @@ if __name__ == "__main__":
             if data_params["control_pool_size"] is None:
                 data_params["control_pool_size"] = len(ctrl_adata.obs)
 
+            """ Removing check for Replogle: some perturbations are not observed genes
             for i in gene_list:
                 if i not in pert_data.gene_names.values.tolist():
                     print(i)
                     raise ValueError(
                         "The gene is not in the perturbation graph. Please select from GEARS.gene_list!"
                     )
+            """
+            for i in gene_list:
+                if i not in pert_data.gene_names.values.tolist():
+                    print(f'Warning: {i} is not in the perturbation graph')
 
             pert = gene_list  # condition.split("+").remove('ctrl')
             cell_graphs = create_cell_graph_dataset_for_prediction(
@@ -463,7 +485,6 @@ if __name__ == "__main__":
             )
             preds = []
             for batch_data in loader:
-                """
                 pred_gene_values = scgpt_forward(
                     batch_data,
                     model,
@@ -479,6 +500,7 @@ if __name__ == "__main__":
                 pred_gene_values = model.pred_perturb(
                     batch_data, data_params["include_zero_gene"], gene_ids=gene_ids, amp=trainer_params["amp"]
                 )
+                """
                 preds.append(pred_gene_values)
             preds = torch.cat(preds, dim=0)
             preds = np.mean(preds.detach().cpu().numpy(), axis=0)
@@ -487,12 +509,8 @@ if __name__ == "__main__":
             post_gt_df.loc[len(post_gt_df)] = X_post
             post_pred_df.loc[len(post_pred_df)] = preds
 
-        index = pd.MultiIndex.from_tuples(
-            list(zip(unique_conds, train_counts)), names=["condition", "n_train"]
-        )
+        index = pd.MultiIndex.from_tuples(list(zip(unique_conds, train_counts)), names=['condition', 'n_train'])
         post_gt_df.index = index
         post_pred_df.index = index
-        post_gt_df.to_csv(f"{args.outdir}/{args.dataset}_{args.seed}_scgpt_post-gt.csv")
-        post_pred_df.to_csv(
-            f"{args.outdir}/{args.dataset}_{args.seed}_scgpt_post-pred.csv"
-        )
+        post_gt_df.to_csv(f'{args.outdir}/{args.dataset}_{args.seed}_{model_name}_post-gt.csv')
+        post_pred_df.to_csv(f'{args.outdir}/{args.dataset}_{args.seed}_{model_name}_post-pred.csv')
