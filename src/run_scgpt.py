@@ -511,7 +511,7 @@ if __name__ == "__main__":
                 pred_gene_values = scgpt_forward(
                     batch_data,
                     model,
-                    criterion,
+                    None,
                     gene_ids,
                     data_params,
                     trainer_params,
