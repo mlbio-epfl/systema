@@ -1,13 +1,13 @@
 #!/bin/bash
 
 # List of datasets
-DATASETS=("Norman2019")
+DATASETS=("Dixit2016")
 
 # List of seeds
 SEEDS=(1 2 3)
 
-device=1
-epochs=50
+device=3
+epochs=20
 
 # Loop through datasets
 for dataset in "${DATASETS[@]}"; do
@@ -17,6 +17,6 @@ for dataset in "${DATASETS[@]}"; do
 		python src/run_matching-mean.py --dataset $dataset --seed $seed
 		python src/run_cpa.py --dataset $dataset --seed $seed --device $device --epochs $epochs
 		python src/run_gears.py --dataset $dataset --seed $seed --device $device --epochs $epochs
-		python src/run_scgpt.py --dataset $dataset --seed $seed --device $device --epochs $epochs
+		# python src/run_scgpt.py --dataset $dataset --seed $seed --device $device --epochs $epochs
 	done
 done

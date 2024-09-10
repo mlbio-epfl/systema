@@ -144,7 +144,7 @@ if __name__ == '__main__':
 
         # Get CPA predictions, sampling random control cells
         cpa_adata_condition = cpa_adata[cpa_adata.obs['condition'] == condition].copy()
-        idxs_control = np.random.choice(len(cpa_control_adata), len(cpa_adata_condition), replace=False)
+        idxs_control = np.random.choice(len(cpa_control_adata), len(cpa_adata_condition), replace=True)
         cpa_adata_condition.X = cpa_control_adata[idxs_control].X.toarray()
         cpa_model.predict(cpa_adata_condition, batch_size=args.batchsize)
         cpa_pred = np.mean(cpa_adata_condition.obsm['CPA_pred'], axis=0)

@@ -36,9 +36,10 @@ parser.add_argument("--finetune", action="store_true")
 parser.add_argument("--train", action="store_true")
 parser.set_defaults(finetune=False)
 
-# TODO: type of split
 # model specific
 parser.add_argument("--modeldir", default="results/checkpoints/scGPT_human")
+parser.add_argument("--modelfile", default=None)
+
 # model hyperparameters
 # default values are from the original scGPT implementation
 parser.add_argument("--batchsize", default=8, type=int)
@@ -49,6 +50,7 @@ args = parser.parse_args()
 
 model_params = {
     "load_model": args.modeldir,
+    "model_file": args.modelfile,  # Added Ramon
     "load_param_prefixs": [
         "encoder",
         "value_encoder",
@@ -114,26 +116,17 @@ def scgpt_forward(
     pert_flags = torch.zeros_like(ori_gene_values, dtype=torch.long, device=device)
     # print('Dev:', device)
     if batch_data.pert is not None:
-        # https://github.com/snap-stanford/GEARS/blob/e0c27b69f8a1a611d56c3f8c5f5a168cb2cde5f6/gears/pertdata.py#L478
-        for i, pert_category in enumerate(batch_data.pert):
-            try:
-                pert_idx = [
-                    np.where(p == data_params["pert_names"])[0][0]
-                    for p in pert_category.split("+")
-                    if p != "ctrl"
-                ]
-            except:
-                print(pert_category)
-                pert_idx = None
-            if pert_idx is not None:
-                pert_flags[i, pert_idx] = 1
-
-        # for i, p in enumerate(batch_data.pert):
-        #     gene_list = list(set(p.split("+")) - set(["ctrl"]))
-        #     for g in gene_list:
-        #         if g in data_params["genes"]:
-        #             # Replicating GEARS behaviour: https://github.com/snap-stanford/GEARS/blob/719328bd56745ab5f38c80dfca55cfd466ee356f/gears/model.py#L151
-        #             pert_flags[i, data_params["genes"][g]] = 1
+        for i, p in enumerate(batch_data.pert):
+            if type(p) is list:
+                gene_list = p
+                if 'ctrl' in gene_list:
+                    gene_list.remove('ctrl')
+            else:  # Perturbation in A + B format
+                gene_list = list(set(p.split("+")) - set(["ctrl"]))
+            for g in gene_list:
+                if g in data_params["genes"]:
+                    # Replicating GEARS behaviour: https://github.com/snap-stanford/GEARS/blob/719328bd56745ab5f38c80dfca55cfd466ee356f/gears/model.py#L151
+                    pert_flags[i, data_params["genes"][g]] = 1
 
     if data_params["include_zero_gene"] in ["all", "batch-wise"]:
         if data_params["include_zero_gene"] == "all":
@@ -235,6 +228,8 @@ if __name__ == "__main__":
         model_params["nlayers"] = model_configs["nlayers"]
         model_params["n_layers_cls"] = model_configs["n_layers_cls"]
     else:
+        model_file = None
+
         # Rename duplicate genes (not supported by VocabPybind)
         pert_data.adata.var["gene_name"] = (
             pert_data.adata.var["gene_name"]
@@ -249,6 +244,11 @@ if __name__ == "__main__":
         vocab = Vocab(
             VocabPybind(genes + data_params["special_tokens"], None)
         )  # bidirectional lookup [gene <-> int]
+
+    #### Added Ramon
+    if model_params['model_file'] is not None:
+        model_file = model_params['model_file']
+        print('Using fine-tuned model from', model_file)
 
     vocab.set_default_index(vocab["<pad>"])
     gene_ids = np.array(
@@ -285,7 +285,7 @@ if __name__ == "__main__":
     ):
         # Only load params that start with the prefix
         model_dict = model.state_dict()
-        pretrained_dict = torch.load(model_file)
+        pretrained_dict = torch.load(model_file, map_location=device)
         pretrained_dict = {
             k: v
             for k, v in pretrained_dict.items()
@@ -304,7 +304,7 @@ if __name__ == "__main__":
         except:
             # Only load params that are in the model and match the size
             model_dict = model.state_dict()
-            pretrained_dict = torch.load(model_file)
+            pretrained_dict = torch.load(model_file, map_location=device)
             pretrained_dict = {
                 k: v
                 for k, v in pretrained_dict.items()
@@ -317,6 +317,7 @@ if __name__ == "__main__":
     model.to(device)
 
     # Training
+    criterion = None
     if args.train:
         criterion = masked_mse_loss
         optimizer = torch.optim.Adam(model.parameters(), lr=trainer_params["lr"])
@@ -526,6 +527,7 @@ if __name__ == "__main__":
                 """
                 preds.append(pred_gene_values)
             preds = torch.cat(preds, dim=0)
+            print(preds.shape, post_pred_df.shape)
             preds = np.mean(preds.detach().cpu().numpy(), axis=0)
 
             # scGPT predictions
