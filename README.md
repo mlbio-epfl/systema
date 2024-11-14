@@ -6,13 +6,17 @@ This repository implements several single-cell perturbation response prediction 
 
 #### Methods
 Currently, we support the following methods:
-* CPA
-* GEARS
-* scGPT
+* CPA (`cpa`)
+* GEARS (`gears`)
+* scGPT (`scgpt`)
+
+We implemented the following two non-parametric baselines:
+* Non-control mean (`nonctl-mean`)
+* Matching mean (`matching-mean`)
 
 To run a method, execute the following command:
 ```
-python src/run_METHOD.py --dataset DATASET (--seed SEED --device DEVICE --epochs EPOCHS)
+python src/run_METHOD.py --dataset DATASET (--finetune --seed SEED --device DEVICE --epochs EPOCHS)
 ```
 This will train the method and store the test predictions for a given train/test split (split controlled by the random seed). The script `run_all.sh` executes all baselines for every dataset. We welcome contributions implementing additional methods.
 
