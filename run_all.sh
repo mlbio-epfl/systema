@@ -1,12 +1,13 @@
 #!/bin/bash
 
 # List of datasets
-DATASETS=("Norman2019" "Adamson2019" "Replogle" "ReplogleK562" "ReplogleRPE1")
+# DATASETS=("Norman2019" "Adamson2019" "Replogle" "ReplogleK562" "ReplogleRPE1")
+DATASETS=("ReplogleK562_v3")
 
 # List of seeds
 SEEDS=(1 2 3)
 
-device=3
+device=0
 epochs=20
 
 # Loop through datasets
