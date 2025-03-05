@@ -32,8 +32,8 @@ parser.add_argument("--dataset", default="Norman2019")
 parser.add_argument("--seed", default=0, type=int)
 parser.add_argument("--outdir", default="results")
 parser.add_argument("--device", default=1, type=int)
-parser.add_argument("--finetune", action='store_true')
-parser.add_argument("--train", action='store_true')
+parser.add_argument("--finetune", action="store_true")
+parser.add_argument("--train", action="store_true")
 parser.set_defaults(finetune=False)
 
 # model specific
@@ -90,7 +90,7 @@ data_params = {
     "pert_pad_id": 2,
     "n_hvg": 0,  # number of highly variable genes
     "include_zero_gene": "all",  # include zero expr genes in training input, "all", "batch-wise", "row-wise", or False
-    "max_seq_len": 5100, #100,  # 1536,
+    "max_seq_len": 5100,  # 100,  # 1536,
     "control_pool_size": 100,  # None,
     # number of cells in the control and predict their perturbation results. If `None`, use all control cells.
 }
@@ -179,12 +179,12 @@ def scgpt_forward(
 if __name__ == "__main__":
     set_seed(args.seed)
     # device = torch.device(f"cuda:{args.device}" if torch.cuda.is_available() else "cpu")
-    device = f'cuda:{args.device}'
+    device = f"cuda:{args.device}"
 
     # Set different name for scGPT finetuned
-    model_name = 'scgpt'
+    model_name = "scgpt"
     if args.finetune:
-        model_name += '_ft'
+        model_name += "_ft"
     else:
         model_params["load_model"] = None
 
@@ -231,8 +231,14 @@ if __name__ == "__main__":
         model_file = None
 
         # Rename duplicate genes (not supported by VocabPybind)
-        pert_data.adata.var['gene_name'] = pert_data.adata.var['gene_name'].astype(str).where(~pert_data.adata.var['gene_name'].duplicated(),
-                                                                          pert_data.adata.var['gene_name'].astype(str) + '_dp')
+        pert_data.adata.var["gene_name"] = (
+            pert_data.adata.var["gene_name"]
+            .astype(str)
+            .where(
+                ~pert_data.adata.var["gene_name"].duplicated(),
+                pert_data.adata.var["gene_name"].astype(str) + "_dp",
+            )
+        )
 
         genes = pert_data.adata.var["gene_name"].tolist()
         vocab = Vocab(
@@ -248,7 +254,8 @@ if __name__ == "__main__":
     gene_ids = np.array(
         [vocab[gene] if gene in vocab else vocab["<pad>"] for gene in genes], dtype=int
     )
-    data_params["genes"] = {value: index for index, value in enumerate(genes)}
+    # data_params["genes"] = {value: index for index, value in enumerate(genes)}
+    data_params["pert_names"] = pert_data.pert_names
     n_genes = len(genes)
 
     # Set up scGPT model
@@ -273,8 +280,8 @@ if __name__ == "__main__":
 
     # Load model weights, either partially or try to load all
     if (
-            model_params["load_param_prefixs"] is not None
-            and model_params["load_model"] is not None
+        model_params["load_param_prefixs"] is not None
+        and model_params["load_model"] is not None
     ):
         # Only load params that start with the prefix
         model_dict = model.state_dict()
@@ -369,7 +376,9 @@ if __name__ == "__main__":
                 if batch % trainer_params["log_interval"] == 0 and batch > 0:
                     lr = scheduler.get_last_lr()[0]
                     ms_per_batch = (
-                            (time.time() - start_time) * 1000 / trainer_params["log_interval"]
+                        (time.time() - start_time)
+                        * 1000
+                        / trainer_params["log_interval"]
                     )
                     cur_loss = total_loss / trainer_params["log_interval"]
                     # ppl = math.exp(cur_loss)
@@ -442,9 +451,9 @@ if __name__ == "__main__":
     delta_pert = pert_mean - control_mean
 
     # Store results
-    unique_conds = list(set(test_adata.obs['condition'].unique()) - set(['ctrl']))
-    post_gt_df = pd.DataFrame(columns=pert_data.adata.var['gene_name'].values)
-    post_pred_df = pd.DataFrame(columns=pert_data.adata.var['gene_name'].values)
+    unique_conds = list(set(test_adata.obs["condition"].unique()) - set(["ctrl"]))
+    post_gt_df = pd.DataFrame(columns=pert_data.adata.var["gene_name"].values)
+    post_pred_df = pd.DataFrame(columns=pert_data.adata.var["gene_name"].values)
     train_counts = []
     model.eval()
     with torch.no_grad():
@@ -483,7 +492,7 @@ if __name__ == "__main__":
             """
             for i in gene_list:
                 if i not in pert_data.gene_names.values.tolist():
-                    print(f'Warning: {i} is not in the perturbation graph')
+                    print(f"Warning: {i} is not in the perturbation graph")
 
             pert = gene_list  # condition.split("+").remove('ctrl')
             cell_graphs = create_cell_graph_dataset_for_prediction(
@@ -503,7 +512,7 @@ if __name__ == "__main__":
                 pred_gene_values = scgpt_forward(
                     batch_data,
                     model,
-                    criterion,
+                    None,
                     gene_ids,
                     data_params,
                     trainer_params,
@@ -525,8 +534,14 @@ if __name__ == "__main__":
             post_gt_df.loc[len(post_gt_df)] = X_post
             post_pred_df.loc[len(post_pred_df)] = preds
 
-        index = pd.MultiIndex.from_tuples(list(zip(unique_conds, train_counts)), names=['condition', 'n_train'])
+        index = pd.MultiIndex.from_tuples(
+            list(zip(unique_conds, train_counts)), names=["condition", "n_train"]
+        )
         post_gt_df.index = index
         post_pred_df.index = index
-        post_gt_df.to_csv(f'{args.outdir}/{args.dataset}_{args.seed}_{model_name}_post-gt.csv')
-        post_pred_df.to_csv(f'{args.outdir}/{args.dataset}_{args.seed}_{model_name}_post-pred.csv')
+        post_gt_df.to_csv(
+            f"{args.outdir}/{args.dataset}_{args.seed}_{model_name}_post-gt.csv"
+        )
+        post_pred_df.to_csv(
+            f"{args.outdir}/{args.dataset}_{args.seed}_{model_name}_post-pred.csv"
+        )
