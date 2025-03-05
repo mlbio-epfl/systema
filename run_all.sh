@@ -1,12 +1,12 @@
 #!/bin/bash
 
 # List of datasets
-DATASETS=("Dixit2016")
+DATASETS=("ReplogleK562_v3")
 
 # List of seeds
 SEEDS=(1 2 3)
 
-device=3
+device=0
 epochs=20
 
 # Loop through datasets
