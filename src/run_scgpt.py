@@ -255,7 +255,8 @@ if __name__ == "__main__":
         [vocab[gene] if gene in vocab else vocab["<pad>"] for gene in genes], dtype=int
     )
     # data_params["genes"] = {value: index for index, value in enumerate(genes)}
-    data_params["pert_names"] = pert_data.pert_names
+    # data_params["pert_names"] = pert_data.pert_names
+    data_params["genes"] = {value: index for index, value in enumerate(genes)}
     n_genes = len(genes)
 
     # Set up scGPT model

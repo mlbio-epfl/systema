@@ -144,6 +144,7 @@ def replogle_k562_2022_v3(seed, data_dir='data'):
     # pert_data.new_data_process(dataset_name='replogle_k562_v2_2022', adata=adata, skip_calc_de = False)  # specific dataset name and adata object
     pert_data.load(data_name=data_name, data_path=data_path)  # load the processed data, the path is saved folder + dataset_name
     pert_data.prepare_split(split='simulation', seed=seed)  # get data split with seed
+    pert_data.dataset_name = ''
 
     if not os.path.exists(file):
         pert_data.adata.write_h5ad(file)
