@@ -14,6 +14,7 @@ import os
 parser = argparse.ArgumentParser()
 parser.add_argument('--dataset', default='Norman2019')
 parser.add_argument('--seed', default=0, type=int)
+parser.add_argument("--data_dir", default="data")
 parser.add_argument('--outdir', default='results')
 parser.add_argument('--device', default=1, type=int)
 parser.add_argument('--hiddendim', default=64, type=int)
@@ -67,7 +68,8 @@ trainer_params = {'n_epochs_kl_warmup': None,
 
 if __name__ == '__main__':
     pert_data = get_pert_data(dataset=args.dataset,
-                              seed=args.seed)
+                              seed=args.seed,
+                              data_dir=args.data_dir)
 
     # Ref: https://cpa-tools.readthedocs.io/en/latest/tutorials/Norman.html
     cpa_adata = pert_data.adata.copy()

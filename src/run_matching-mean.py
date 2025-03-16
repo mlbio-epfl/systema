@@ -12,13 +12,15 @@ import argparse
 parser = argparse.ArgumentParser()
 parser.add_argument('--dataset', default='Norman2019')
 parser.add_argument('--seed', default=0, type=int)
+parser.add_argument("--data_dir", default="data")
 parser.add_argument('--outdir', default='results')
 
 args = parser.parse_args()
 
 if __name__ == '__main__':
     pert_data = get_pert_data(dataset=args.dataset,
-                              seed=args.seed)
+                              seed=args.seed,
+                              data_dir=args.data_dir)
 
     # Split train and test
     test_adata = pert_data.adata[pert_data.adata.obs['split'] == 'test']

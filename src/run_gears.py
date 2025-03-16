@@ -16,6 +16,7 @@ from pathlib import Path
 parser = argparse.ArgumentParser()
 parser.add_argument('--dataset', default='Norman2019')
 parser.add_argument('--seed', default=0, type=int)
+parser.add_argument("--data_dir", default="data")
 parser.add_argument('--outdir', default='results')
 parser.add_argument('--device', default=0, type=int)
 parser.add_argument('--hiddendim', default=64, type=int)
@@ -27,7 +28,8 @@ args = parser.parse_args()
 
 if __name__ == '__main__':
     pert_data = get_pert_data(dataset=args.dataset,
-                              seed=args.seed)
+                              seed=args.seed,
+                              data_dir=args.data_dir)
 
     # Ref: https://github.com/snap-stanford/GEARS/blob/719328bd56745ab5f38c80dfca55cfd466ee356f/demo/model_tutorial.ipynb
     pert_data.get_dataloader(batch_size=args.batchsize,
