@@ -157,5 +157,7 @@ if __name__ == '__main__':
     index = pd.MultiIndex.from_tuples(list(zip(unique_conds, train_counts)), names=['condition', 'n_train'])
     post_gt_df.index = index
     post_pred_df.index = index
+
+    Path(args.outdir).mkdir(parents=True, exist_ok=True)
     post_gt_df.to_csv(f'{args.outdir}/{args.dataset}_{args.seed}_cpa_post-gt.csv')
     post_pred_df.to_csv(f'{args.outdir}/{args.dataset}_{args.seed}_cpa_post-pred.csv')
