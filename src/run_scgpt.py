@@ -29,6 +29,7 @@ warnings.filterwarnings("ignore")
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--dataset", default="Norman2019")
+parser.add_argument("--data_dir", default="data")
 parser.add_argument("--seed", default=0, type=int)
 parser.add_argument("--outdir", default="results")
 parser.add_argument("--device", default=1, type=int)
@@ -189,7 +190,7 @@ if __name__ == "__main__":
         model_params["load_model"] = None
 
     # Load data
-    pert_data = get_pert_data(dataset=args.dataset, seed=args.seed)
+    pert_data = get_pert_data(dataset=args.dataset, seed=args.seed, data_dir=args.data_dir)
     pert_data.get_dataloader(batch_size=args.batchsize, test_batch_size=args.batchsize)
 
     # Load metadata of the model and data
@@ -540,6 +541,8 @@ if __name__ == "__main__":
         )
         post_gt_df.index = index
         post_pred_df.index = index
+
+        Path(args.outdir).mkdir(parents=True, exist_ok=True)
         post_gt_df.to_csv(
             f"{args.outdir}/{args.dataset}_{args.seed}_{model_name}_post-gt.csv"
         )

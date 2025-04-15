@@ -33,7 +33,7 @@ Currently, we support the following datasets:
 The notebooks `analysis/benchmark_*.ipynb` evaluate perturbation response prediction performance on different datasets. We load the predictions of different methods for a given dataset and multiple train/test splits. We then compute evaluation metrics based on these predictions.
 
 ## Environment
-We recommend using Python >=3.10. The file `requirements.txt` contains the library versions of our environment. We used a separate environment for running scGPT (because of incompatibility issues with CPA/GEARS), the versions of this environment can be found in `scgpt_requirements.txt`.
+We recommend using Python >=3.10. The file `env/requirements.txt` contains the library versions of our environment. We used a separate environment for running scGPT (because of incompatibility issues with CPA/GEARS), which can be created by `bash env/scgpt_env.sh`.
 
 ## Citing
 If you find this repository useful, please consider citing:

@@ -6,17 +6,20 @@ from tqdm import tqdm
 from scipy.stats import pearsonr
 from data import get_pert_data
 import argparse
+from pathlib import Path
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--dataset', default='Norman2019')
 parser.add_argument('--seed', default=0, type=int)
+parser.add_argument("--data_dir", default="data")
 parser.add_argument('--outdir', default='results')
 
 args = parser.parse_args()
 
 if __name__ == '__main__':
     pert_data = get_pert_data(dataset=args.dataset,
-                              seed=args.seed)
+                              seed=args.seed,
+                              data_dir=args.data_dir)
 
     # Split train and test
     test_adata = pert_data.adata[pert_data.adata.obs['split'] == 'test']
@@ -57,5 +60,7 @@ if __name__ == '__main__':
     index = pd.MultiIndex.from_tuples(list(zip(unique_conds, train_counts)), names=['condition', 'n_train'])
     post_gt_df.index = index
     post_pred_df.index = index
+    
+    Path(args.outdir).mkdir(parents=True, exist_ok=True)
     post_gt_df.to_csv(f'{args.outdir}/{args.dataset}_{args.seed}_nonctl-mean_post-gt.csv')
     post_pred_df.to_csv(f'{args.outdir}/{args.dataset}_{args.seed}_nonctl-mean_post-pred.csv')
