@@ -22,10 +22,18 @@ parser.add_argument('--hiddendim', default=64, type=int)
 parser.add_argument('--batchsize', default=32, type=int)
 parser.add_argument('--epochs', default=50, type=int)
 parser.add_argument('--lr', default=1e-3, type=int)
-parser.add_argument("--load_model", action="store_true")
-parser.set_defaults(load_model=False)
 
 args = parser.parse_args()
+
+def average_of_perturbation_centroids(adata):
+    pert_means = []
+    pert_adata = adata[adata.obs['control'] == 0]
+    for cond in pert_adata.obs['condition'].unique():
+        adata_cond = pert_adata[pert_adata.obs['condition'] == cond]
+        pert_mean = np.array(adata_cond.X.mean(axis=0))[0]
+        pert_means.append(pert_mean)
+    pert_means = np.array(pert_means)
+    return np.mean(pert_means, axis=0)
 
 if __name__ == '__main__':
     pert_data = get_pert_data(dataset=args.dataset,
@@ -34,13 +42,30 @@ if __name__ == '__main__':
     # Ref: https://github.com/snap-stanford/GEARS/blob/719328bd56745ab5f38c80dfca55cfd466ee356f/demo/model_tutorial.ipynb
     pert_data.get_dataloader(batch_size=args.batchsize,
                              test_batch_size=args.batchsize)
-    model_path = f'{args.outdir}/checkpoints/gears_seed{args.seed}_{args.dataset}'
+    
+    # Split train and test
+    test_adata = pert_data.adata[pert_data.adata.obs['split'] == 'test'].copy()
+    train_adata = pert_data.adata[pert_data.adata.obs['split'] == 'train'].copy()
+
+    # Get control mean, non control mean (pert_mean), and non control mean differential
+    control_adata = train_adata[train_adata.obs['control'] == 1]
+    pert_adata = train_adata[train_adata.obs['control'] == 0]
+    control_mean = np.array(control_adata.X.mean(axis=0))[0]
+    pert_mean = np.array(pert_adata.X.mean(axis=0))[0]
+    pert_centroids_mean = average_of_perturbation_centroids(pert_adata)
+    delta_pert = pert_mean - control_mean
+
+    # Train model to predict residuals
+    pert_data.adata.X = pert_data.adata.X - pert_centroids_mean
+
+    # Train/load model
+    model_path = f'{args.outdir}/checkpoints/gears-residuals_seed{args.seed}_{args.dataset}'
     gears_model = GEARS(pert_data, device=f'cuda:{args.device}',
                         weight_bias_track=False,
                         proj_name='pertnet',
                         exp_name='pertnet')
     gears_model.model_initialize(hidden_size=args.hiddendim)
-    if args.load_model and os.path.exists(model_path):
+    if os.path.exists(model_path):
         print(f'Loading model from {model_path}')
         gears_model.load_pretrained(model_path)
     else:
@@ -48,19 +73,8 @@ if __name__ == '__main__':
         Path(f'{args.outdir}/checkpoints').mkdir(parents=True, exist_ok=True)
         gears_model.save_model(model_path)
 
-    # Split train and test
-    test_adata = pert_data.adata[pert_data.adata.obs['split'] == 'test']
-    train_adata = pert_data.adata[pert_data.adata.obs['split'] == 'train']
-
-    # Get control mean, non control mean (pert_mean), and non control mean differential
-    control_adata = train_adata[train_adata.obs['control'] == 1]
-    pert_adata = train_adata[train_adata.obs['control'] == 0]
-    control_mean = np.array(control_adata.X.mean(axis=0))[0]
-    pert_mean = np.array(pert_adata.X.mean(axis=0))[0]
-    delta_pert = pert_mean - control_mean
-
     # Store results
-    unique_conds = list(set(test_adata.obs['condition'].astype(str).unique()) - set(['ctrl']))
+    unique_conds = list(set(test_adata.obs['condition'].unique()) - set(['ctrl']))
     post_gt_df = pd.DataFrame(columns=pert_data.adata.var['gene_name'].values)
     post_pred_df = pd.DataFrame(columns=pert_data.adata.var['gene_name'].values)
     train_counts = []
@@ -84,12 +98,12 @@ if __name__ == '__main__':
         train_counts.append(n_train)
 
         # Get GEARS predictions
-        gears_pred = list(gears_model.predict([gene_list]).values())[0]
+        gears_pred = list(gears_model.predict([gene_list]).values())[0] + pert_centroids_mean
         post_gt_df.loc[len(post_gt_df)] = X_post
         post_pred_df.loc[len(post_pred_df)] = gears_pred
 
     index = pd.MultiIndex.from_tuples(list(zip(unique_conds, train_counts)), names=['condition', 'n_train'])
     post_gt_df.index = index
     post_pred_df.index = index
-    post_gt_df.to_csv(f'{args.outdir}/{args.dataset}_{args.seed}_gears_post-gt.csv')
-    post_pred_df.to_csv(f'{args.outdir}/{args.dataset}_{args.seed}_gears_post-pred.csv')
+    post_gt_df.to_csv(f'{args.outdir}/{args.dataset}_{args.seed}_gears-residuals_post-gt.csv')
+    post_pred_df.to_csv(f'{args.outdir}/{args.dataset}_{args.seed}_gears-residuals_post-pred.csv')

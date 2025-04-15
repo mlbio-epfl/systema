@@ -90,7 +90,7 @@ data_params = {
     "pert_pad_id": 2,
     "n_hvg": 0,  # number of highly variable genes
     "include_zero_gene": "all",  # include zero expr genes in training input, "all", "batch-wise", "row-wise", or False
-    "max_seq_len": 5100,  # 100,  # 1536,
+    "max_seq_len": 10000, #5100,  # 100,  # 1536,
     "control_pool_size": 100,  # None,
     # number of cells in the control and predict their perturbation results. If `None`, use all control cells.
 }
@@ -137,7 +137,7 @@ def scgpt_forward(
             )
 
         # sample input_gene_id
-        if len(input_gene_ids) > data_params["max_seq_len"]:
+        if not test and len(input_gene_ids) > data_params["max_seq_len"]:
             input_gene_ids = torch.randperm(len(input_gene_ids), device=device)[
                 : data_params["max_seq_len"]
             ]

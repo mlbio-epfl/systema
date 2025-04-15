@@ -20,7 +20,8 @@ parser.add_argument('--hiddendim', default=64, type=int)
 parser.add_argument('--batchsize', default=32, type=int)
 parser.add_argument('--epochs', default=50, type=int)
 parser.add_argument('--lr', default=1e-3, type=int)
-
+parser.add_argument("--load_model", action="store_true")
+parser.set_defaults(load_model=False)
 
 args = parser.parse_args()
 os.environ['CUDA_VISIBLE_DEVICES'] = str(args.device)
@@ -90,13 +91,15 @@ if __name__ == '__main__':
                         )
     Path(f'{args.outdir}/checkpoints').mkdir(parents=True, exist_ok=True)
     model_path = f'{args.outdir}/checkpoints/cpa_seed{args.seed}_{args.dataset}'
-    if not os.path.exists(model_path):
+    if not args.load_model or not os.path.exists(model_path):
         cpa_model.train(max_epochs=args.epochs,
                         use_gpu=True,
                         batch_size=args.batchsize,
                         plan_kwargs=trainer_params,
                         early_stopping_patience=10,
-                        check_val_every_n_epoch=5,
+                        # check_val_every_n_epoch=5,
+                        check_val_every_n_epoch=0,
+                        limit_val_batches=0,
                         save_path=model_path)
 
     # Load best CPA model

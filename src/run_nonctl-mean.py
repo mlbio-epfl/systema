@@ -27,7 +27,6 @@ if __name__ == '__main__':
     pert_adata = train_adata[train_adata.obs['control'] == 0]
     control_mean = np.array(control_adata.X.mean(axis=0))[0]
     pert_mean = np.array(pert_adata.X.mean(axis=0))[0]
-    delta_pert = pert_mean - control_mean
 
     # Store results
     unique_conds = list(set(test_adata.obs['condition'].unique()) - set(['ctrl']))
