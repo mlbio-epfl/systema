@@ -1,8 +1,7 @@
 #!/bin/bash
 
 # List of datasets
-# DATASETS=("Norman2019" "Adamson2016" "Replogle" "ReplogleK562" "ReplogleRPE1")
-DATASETS=("ReplogleK562_v3")
+DATASETS=("Norman2019")  # Dataset names here
 
 # List of seeds
 SEEDS=(1 2 3)
