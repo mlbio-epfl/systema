@@ -154,3 +154,9 @@ This function returns two outputs:
 * `scores_dict`: dictionary method_name to Numpy array of shape `(n_test_perturbations, n_reference_centroids)` with scores for each test perturbation and reference centroid. Higher scores indicates higher likelihoods of perturbation inducing a certain phenotype
 
 The function `plot_binary_roc` takes these two outputs as well as `methods` and plots a ROC curve.
+
+---
+## Quick description
+
+The files `eval_utils.py`, `pearson_delta_reference_metrics.py`, and `centroid_accuracy.py` contain utility functions to calculate metrics employed in our benchmark. The notebooks `benchmark_all.ipynb`, `centroid_accuracy.ipynb`, and `replogle_gwps_downstream.ipynb` use these metrics to evaluate performance and perform downstream analyses of the predicted post-perturbation profiles.
+
