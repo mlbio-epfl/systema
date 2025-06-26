@@ -1,3 +1,5 @@
+[![DOI](https://zenodo.org/badge/784794939.svg)](https://doi.org/10.5281/zenodo.15746994)
+
 # Evaluating Single-cell Perturbation Response Prediction Beyond Systematic Variation
 
 This repository implements several single-cell perturbation response prediction methods under a unified pipeline. In this work, we demonstrate that existing single-cell perturbation benchmarks are often influenced by systematic variation (_i.e._, systematic differences between perturbed and control cells), which may arise as a result of selection biases and confounding factors. We study to what extent perturbation response prediction methods can generalize beyond these systematic effects. We also show that existing reference-based metrics are susceptible to systematic variation and demonstrate that predicting transcriptional outcomes of unseen genetic perturbations is remarkably hard. For more details, please check out our paper.
