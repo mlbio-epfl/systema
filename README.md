@@ -46,10 +46,10 @@ We recommend using Python >=3.10. The file `env/requirements.txt` contains the l
 If you find this repository useful, please consider citing:
 
 ```
-@article{vinas2024evaluating,
-  title={Evaluating Single-cell Perturbation Response Prediction Beyond Systematic Variation},
+@article{vinas2025systema,
+  title={Systema: A Framework for Evaluating Genetic Perturbation Response Prediction Beyond Systematic Variation},
   author={Vinas Torne, Ramon and Wiatrak, Maciej and Piran, Zoe and Fan, Shuyang and Jiang, Liangze and A. Teichmann, Sarah and Nitzan, Mor and Brbic, Maria},
-  journal={biorxiv},
-  year={2024},
+  journal={Nature Biotechnology},
+  year={2025},
 }
 ```
