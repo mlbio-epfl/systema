@@ -2,6 +2,8 @@
 
 #### PearsonΔ metrics with custom reference
 
+<img src="imgs/perturbed_reference.png" width="28.25%" />
+
 For a given perturbation, the PearsonΔ metrics with a custom reference can be calculated as follows:
 ```python
 from pearson_delta_reference_metrics import pearson_delta_reference_metrics
@@ -33,6 +35,8 @@ pert_mean = average_of_perturbation_centroids(pert_adata)
 ---
 
 #### Centroid accuracy
+
+ <img src="imgs/centroid_accuracy.png" width="61.75%" />
 
 The centroid accuracies for held out perturbations can be calculated as follows:
 ```python
