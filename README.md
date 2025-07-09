@@ -1,6 +1,6 @@
 [![DOI](https://zenodo.org/badge/784794939.svg)](https://doi.org/10.5281/zenodo.15746994)
 
-# Evaluating Single-cell Perturbation Response Prediction Beyond Systematic Variation
+# Systema: A Framework for Evaluating Genetic Perturbation Response Prediction Beyond Systematic Variation
 
 This repository implements several single-cell perturbation response prediction methods under a unified pipeline. In this work, we demonstrate that existing single-cell perturbation benchmarks are often influenced by systematic variation (_i.e._, systematic differences between perturbed and control cells), which may arise as a result of selection biases and confounding factors. We study to what extent perturbation response prediction methods can generalize beyond these systematic effects. We also show that existing reference-based metrics are susceptible to systematic variation and demonstrate that predicting transcriptional outcomes of unseen genetic perturbations is remarkably hard. For more details, please check out our paper.
 
@@ -37,7 +37,16 @@ The notebooks in the [processing](https://github.com/mlbio-epfl/perturb-bench/tr
 
 #### Evaluation
 
-The [evaluation](https://github.com/mlbio-epfl/perturb-bench/tree/main/evaluation) folder contains an easy-to-use implementation of the evaluation metrics developed in this paper, together with instructions and examples. The notebook `evaluation/benchmark_all.ipynb` evaluates perturbation response prediction performance on different datasets. We load the predictions of different methods for a given dataset and multiple train/test splits. We then compute evaluation metrics based on these predictions.
+Systema enables new evaluation metrics for perturbation response prediction, including 1) Pearson correlation on delta profiles using centroid of perturbed cells as reference and 2) centroid accuracy, which measures whether predicted post-perturbation profiles are closer to their correct
+ground-truth centroid than to the centroids of other perturbations.
+
+<p float="left">
+  <img src="evaluation/imgs/perturbed_reference.png" width="28.25%" />
+  <img src="evaluation/imgs/centroid_accuracy.png" width="61.75%" />
+</p>
+
+
+The [evaluation](https://github.com/mlbio-epfl/systema/tree/main/evaluation) folder contains an easy-to-use implementation of the evaluation metrics developed in this paper, together with instructions and examples. The notebook `evaluation/benchmark_all.ipynb` evaluates perturbation response prediction performance on different datasets. We load the predictions of different methods for a given dataset and multiple train/test splits. We then compute evaluation metrics based on these predictions.
 
 ## Environment
 We recommend using Python >=3.10. The file `env/requirements.txt` contains the library versions of our environment. We used a separate environment for running scGPT (because of incompatibility issues with CPA/GEARS), which can be created by `bash env/scgpt_env.sh`.
